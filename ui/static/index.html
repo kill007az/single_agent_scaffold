@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Single-Agent Scaffold</title>
+  <link rel="preconnect" href="https://fonts.bunny.net" />
+  <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600|jetbrains-mono:400,500" rel="stylesheet" />
+  <style>
+    /* ── Reset & tokens ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0c0d11;
+      --surface:     #13141a;
+      --surface2:    #1a1b24;
+      --border:      #22242e;
+      --border2:     #2d3044;
+      --text:        #dde1ec;
+      --text-muted:  #5c6380;
+      --text-dim:    #3a3f58;
+      --accent:      #6366f1;
+      --accent-dim:  #3730a3;
+      --success:     #22c55e;
+      --success-bg:  #052e16;
+      --warning:     #f59e0b;
+      --warning-bg:  #1c1407;
+      --error:       #ef4444;
+      --error-bg:    #1f0707;
+      --purple:      #a855f7;
+      --blue:        #3b82f6;
+      --gold:        #eab308;
+      --font:        'Inter', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', 'Fira Code', monospace;
+      --radius:      8px;
+      --radius-lg:   12px;
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 48px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 10px; }
+
+    .logo {
+      width: 26px; height: 26px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+    }
+
+    .brand { font-weight: 600; font-size: 13px; color: var(--text); }
+    .brand-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 16px; }
+
+    .stat-pill {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .stat-pill .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+    .stat-pill.has-data .dot { background: var(--purple); }
+
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+    #status-dot.running { background: var(--accent); animation: pulse 1.5s infinite; }
+    #status-dot.done    { background: var(--success); }
+    #status-dot.error   { background: var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    #elapsed {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 36px;
+    }
+
+    .btn {
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text-muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); filter: brightness(1.2); }
+    .btn.danger { color: var(--error); border-color: #3f1010; }
+    .btn.danger:hover { background: var(--error-bg); border-color: #7f2020; }
+    .btn.danger.armed { background: var(--error-bg); border-color: var(--error); color: var(--error); }
+
+    /* ── Body layout ─────────────────────────────────────────────────────── */
+    #body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Query bar ───────────────────────────────────────────────────────── */
+    #query-bar {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #query-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    #query-input {
+      flex: 1;
+      font-family: var(--font);
+      font-size: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 9px 14px;
+      resize: none;
+      outline: none;
+      min-height: 40px;
+      max-height: 120px;
+      transition: border-color 0.15s;
+    }
+    #query-input::placeholder { color: var(--text-dim); }
+    #query-input:focus { border-color: var(--accent); }
+
+    #run-btn {
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 9px 18px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #run-btn:hover { background: #4f51d9; }
+    #run-btn:disabled { opacity: 0.4; cursor: default; }
+
+    #examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      align-items: center;
+    }
+    .example-label { font-size: 11px; color: var(--text-dim); }
+    .example-chip {
+      font-size: 11px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 3px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: var(--font);
+    }
+    .example-chip:hover { border-color: var(--accent); color: var(--text); background: var(--surface); }
+
+    /* ── Main content area ───────────────────────────────────────────────── */
+    #content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 14px 16px 8px;
+    }
+
+    #goals-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 12px;
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border-left: 2px solid transparent;
+      margin-bottom: 4px;
+      font-size: 12px;
+      line-height: 1.45;
+      animation: fadeSlide 0.25s ease forwards;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .goal-item.open  { border-left-color: var(--warning); background: var(--warning-bg); }
+    .goal-item.done  { border-left-color: var(--success); background: var(--success-bg); }
+
+    .goal-status {
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 1px;
+      width: 14px;
+      text-align: center;
+    }
+    .goal-item.open  .goal-status { color: var(--warning); }
+    .goal-item.done  .goal-status { color: var(--success); }
+
+    .goal-text { color: var(--text); }
+
+    /* Final answer in sidebar */
+    #final-panel {
+      border-top: 1px solid var(--border);
+      padding: 12px;
+      display: none;
+    }
+    #final-panel.visible { display: block; }
+
+    #final-answer {
+      background: linear-gradient(135deg, #0f1330, #1a1040);
+      border: 1px solid #3730a3;
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    #final-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 6px;
+    }
+
+    .copy-btn {
+      font-size: 11px;
+      background: transparent;
+      border: 1px solid var(--border2);
+      color: var(--text-muted);
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .copy-btn.copied { color: var(--success); border-color: var(--success); }
+
+    /* ── Timeline ────────────────────────────────────────────────────────── */
+    #timeline-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    #timeline { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Empty state */
+    #empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+      color: var(--text-dim);
+    }
+    #empty-state .empty-icon {
+      font-size: 32px;
+      opacity: 0.4;
+    }
+    #empty-state p { font-size: 13px; }
+    #empty-state small { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+
+    /* Iter card */
+    .iter-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+      animation: fadeSlide 0.2s ease forwards;
+    }
+
+    .iter-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .iter-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .iter-header-detail {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .iter-body { padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
+
+    .iter-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12px;
+      animation: fadeSlide 0.2s ease forwards;
+    }
+
+    .iter-icon {
+      flex-shrink: 0;
+      width: 18px;
+      text-align: center;
+      font-size: 11px;
+      margin-top: 1px;
+      color: var(--text-dim);
+    }
+
+    .iter-content { flex: 1; min-width: 0; }
+
+    /* Memory row */
+    .row-memory .iter-icon { color: var(--purple); }
+    .memory-pill {
+      display: inline-block;
+      background: #1e0f3a;
+      border: 1px solid #4c1d95;
+      color: #c084fc;
+      font-size: 10px;
+      font-family: var(--mono);
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+
+    /* Tool call row */
+    .row-tool .iter-icon { color: var(--blue); }
+    .tool-name {
+      font-family: var(--mono);
+      font-weight: 500;
+      color: #60a5fa;
+      font-size: 12px;
+    }
+    .tool-args {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      word-break: break-all;
+    }
+
+    /* Action result row */
+    .row-action .iter-icon { color: var(--text-dim); }
+    .action-result {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .action-result.ok { border-left: 2px solid var(--success); }
+    .action-result.err { border-left: 2px solid var(--error); color: var(--error); }
+
+    /* Blocked row */
+    .row-blocked .iter-icon { color: var(--error); }
+    .blocked-msg { font-size: 11px; color: var(--error); }
+
+    /* Answer preview row */
+    .row-answer .iter-icon { color: var(--gold); }
+    .answer-preview { font-size: 12px; color: var(--gold); }
+
+    /* Attach row */
+    .row-attach .iter-icon { color: var(--accent); }
+    .attach-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      background: var(--accent-dim);
+      color: #818cf8;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    /* All done / synthesis row */
+    .run-event {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      animation: fadeSlide 0.2s ease forwards;
+    }
+    .run-event.success { border-color: #1a3d2a; color: var(--success); }
+    .run-event.stopped { border-color: #3f1010; color: var(--error); }
+    .run-event.gateway { border-color: #2a2010; color: var(--warning); }
+    .run-event-icon { font-size: 12px; }
+
+    /* Thinking indicator */
+    #thinking {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 8px 0;
+    }
+    #thinking.visible { display: flex; }
+
+    .dot-pulse { display: flex; gap: 3px; align-items: center; }
+    .dot-pulse span {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+    .dot-pulse span:nth-child(2) { animation-delay: 0.2s; }
+    .dot-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+      40%            { transform: scale(1);   opacity: 1; }
+    }
+
+    /* Scroll sentinel */
+    #scroll-sentinel { height: 1px; }
+
+    /* ── Animations ──────────────────────────────────────────────────────── */
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Toast ───────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      opacity: 0;
+      transform: translateY(4px);
+      transition: all 0.2s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo">⬡</div>
+      <span class="brand">single-agent-scaffold</span>
+      <span class="brand-tag">agent6</span>
+    </div>
+    <div class="header-right">
+      <div id="mem-stat" class="stat-pill">
+        <span class="dot"></span>
+        <span id="mem-count">0 memories</span>
+      </div>
+      <div id="art-stat" class="stat-pill">
+        <span class="dot"></span>
+        <span id="art-count">0 artifacts</span>
+      </div>
+      <div id="status-dot"></div>
+      <code id="elapsed">—</code>
+      <button class="btn" onclick="clearRun()">Clear</button>
+      <button class="btn danger" id="wipe-btn" onclick="handleWipe()">Wipe Session</button>
+    </div>
+  </header>
+
+  <div id="body">
+
+    <!-- ── Query bar ──────────────────────────────────────────────────────── -->
+    <div id="query-bar">
+      <div id="query-row">
+        <textarea
+          id="query-input"
+          rows="1"
+          placeholder="Ask anything… e.g. What's the time in Tokyo and New York? Convert 100 USD to JPY."
+          oninput="autoResize(this)"
+          onkeydown="handleKey(event)"
+        ></textarea>
+        <button id="run-btn" onclick="runQuery()">▶ Run</button>
+      </div>
+      <div id="examples">
+        <span class="example-label">Try:</span>
+        <button class="example-chip" onclick="setQuery(this.textContent)">Time in Tokyo + London, convert 100 USD to JPY</button>
+        <button class="example-chip" onclick="setQuery(this.textContent)">Convert 250 EUR to GBP and find the rate</button>
+        <button class="example-chip" onclick="setQuery(this.textContent)">List all files in the sandbox</button>
+        <button class="example-chip" onclick="setQuery(this.textContent)">What time is it in Sydney, Dubai, and New York?</button>
+      </div>
+    </div>
+
+    <!-- ── Content ────────────────────────────────────────────────────────── -->
+    <div id="content">
+
+      <!-- Sidebar: goals + final answer -->
+      <aside id="sidebar">
+        <div class="panel-title">Goals</div>
+        <div id="goals-list"></div>
+
+        <div id="final-panel">
+          <div class="panel-title" style="padding-top:0">Final Answer</div>
+          <div id="final-answer"></div>
+          <div id="final-actions">
+            <button class="copy-btn" id="copy-btn" onclick="copyAnswer()">Copy</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main timeline -->
+      <main id="timeline-wrap">
+
+        <!-- Empty state -->
+        <div id="empty-state">
+          <div class="empty-icon">⬡</div>
+          <p>Enter a query and press <strong>Run</strong> to watch the agent loop</p>
+          <small>Memory → Perception → Decision → Action</small>
+        </div>
+
+        <!-- Live timeline -->
+        <div id="timeline" style="display:none">
+          <div id="scroll-sentinel"></div>
+        </div>
+
+        <!-- Thinking indicator -->
+        <div id="thinking">
+          <div class="dot-pulse"><span></span><span></span><span></span></div>
+          <span id="thinking-label">initialising…</span>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────────
+    let es = null;
+    let startTime = null;
+    let timerID = null;
+    let finalText = '';
+    let currentRunId = null;
+    let wipeArmed = false;
+    let wipeTimeout = null;
+    let goals = {};          // text -> {el, status}
+    let currentIterCard = null;
+    let autoScroll = true;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function toast(msg, duration = 2000) {
+      const el = $('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    function setThinking(label) {
+      $('thinking').classList.add('visible');
+      $('thinking-label').textContent = label;
+    }
+    function hideThinking() { $('thinking').classList.remove('visible'); }
+
+    function setStatus(s) {
+      const dot = $('status-dot');
+      dot.className = s;  // idle / running / done / error
+    }
+
+    function startTimer() {
+      startTime = Date.now();
+      $('elapsed').textContent = '0.0s';
+      timerID = setInterval(() => {
+        $('elapsed').textContent = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
+      }, 100);
+    }
+    function stopTimer() {
+      clearInterval(timerID);
+      timerID = null;
+    }
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    function setQuery(text) { $('query-input').value = text; }
+
+    function handleKey(e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault(); runQuery();
+      }
+    }
+
+    // ── Scroll sentinel ───────────────────────────────────────────────────────
+    const sentinel = $('scroll-sentinel');
+    const observer = new IntersectionObserver(entries => {
+      autoScroll = entries[0].isIntersecting;
+    }, { root: $('timeline-wrap') });
+    observer.observe(sentinel);
+
+    function scrollDown() {
+      if (autoScroll) sentinel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ── Session status ────────────────────────────────────────────────────────
+    async function loadStatus() {
+      try {
+        const r = await fetch('/status');
+        const s = await r.json();
+        $('mem-count').textContent = `${s.memory_items} memor${s.memory_items === 1 ? 'y' : 'ies'}`;
+        $('art-count').textContent = `${s.artifacts} artifact${s.artifacts === 1 ? '' : 's'}`;
+        $('mem-stat').classList.toggle('has-data', s.memory_items > 0);
+        $('art-stat').classList.toggle('has-data', s.artifacts > 0);
+      } catch (_) {}
+    }
+
+    // ── Wipe ──────────────────────────────────────────────────────────────────
+    async function handleWipe() {
+      const btn = $('wipe-btn');
+      if (!wipeArmed) {
+        wipeArmed = true;
+        btn.classList.add('armed');
+        btn.textContent = 'Confirm wipe?';
+        wipeTimeout = setTimeout(() => {
+          wipeArmed = false;
+          btn.classList.remove('armed');
+          btn.textContent = 'Wipe Session';
+        }, 3000);
+        return;
+      }
+      clearTimeout(wipeTimeout);
+      wipeArmed = false;
+      btn.classList.remove('armed');
+      btn.textContent = 'Wipe Session';
+
+      const r = await fetch('/wipe', { method: 'POST' });
+      const s = await r.json();
+      toast(`Wiped ${s.wiped.memory_items} memories, ${s.wiped.artifacts} artifacts`);
+      loadStatus();
+    }
+
+    // ── Clear run (visual only) ───────────────────────────────────────────────
+    function clearRun() {
+      if (es) { es.close(); es = null; }
+      stopTimer();
+      setStatus('');
+      $('elapsed').textContent = '—';
+      $('timeline').innerHTML = '';
+      $('timeline').appendChild(sentinel);
+      $('timeline').style.display = 'none';
+      $('empty-state').style.display = '';
+      $('goals-list').innerHTML = '';
+      $('final-panel').classList.remove('visible');
+      $('final-answer').textContent = '';
+      hideThinking();
+      goals = {};
+      currentIterCard = null;
+      finalText = '';
+      currentRunId = null;
+      $('run-btn').disabled = false;
+    }
+
+    // ── Goal upsert ───────────────────────────────────────────────────────────
+    function upsertGoal(text, status) {
+      if (goals[text]) {
+        const g = goals[text];
+        if (g.status !== status) {
+          g.status = status;
+          g.el.className = `goal-item ${status}`;
+          g.el.querySelector('.goal-status').textContent = status === 'done' ? '✓' : '○';
+        }
+      } else {
+        const el = document.createElement('div');
+        el.className = `goal-item ${status}`;
+        el.innerHTML = `
+          <span class="goal-status">${status === 'done' ? '✓' : '○'}</span>
+          <span class="goal-text">${esc(text)}</span>
+        `;
+        $('goals-list').appendChild(el);
+        goals[text] = { el, status };
+      }
+    }
+
+    // ── Iter card ─────────────────────────────────────────────────────────────
+    function createIterCard(n) {
+      const card = document.createElement('div');
+      card.className = 'iter-card';
+      card.dataset.iter = n;
+      card.innerHTML = `
+        <div class="iter-header">
+          <span class="iter-badge">iter ${n}</span>
+          <span class="iter-header-detail" id="iter-${n}-detail"></span>
+        </div>
+        <div class="iter-body" id="iter-${n}-body"></div>
+      `;
+      // Insert before sentinel
+      $('timeline').insertBefore(card, sentinel);
+      scrollDown();
+      return card;
+    }
+
+    function addRow(card, cls, iconHtml, contentHtml) {
+      const body = card.querySelector('.iter-body');
+      const row = document.createElement('div');
+      row.className = `iter-row ${cls}`;
+      row.innerHTML = `
+        <span class="iter-icon">${iconHtml}</span>
+        <div class="iter-content">${contentHtml}</div>
+      `;
+      body.appendChild(row);
+      scrollDown();
+    }
+
+    function formatArgs(args) {
+      if (typeof args === 'string') return esc(args);
+      try {
+        const parts = Object.entries(args).map(([k, v]) => `${k}: <em>${esc(String(v))}</em>`);
+        return parts.join('  ·  ');
+      } catch (_) { return esc(String(args)); }
+    }
+
+    // ── Run query ─────────────────────────────────────────────────────────────
+    function runQuery() {
+      const query = $('query-input').value.trim();
+      if (!query) return;
+
+      // Reset
+      if (es) es.close();
+      stopTimer();
+      goals = {};
+      currentIterCard = null;
+      finalText = '';
+      $('goals-list').innerHTML = '';
+      $('timeline').innerHTML = '';
+      $('timeline').appendChild(sentinel);
+      $('timeline').style.display = 'flex';
+      $('empty-state').style.display = 'none';
+      $('final-panel').classList.remove('visible');
+      $('final-answer').textContent = '';
+      $('run-btn').disabled = true;
+      setStatus('running');
+      setThinking('starting agent…');
+      startTimer();
+      autoScroll = true;
+
+      es = new EventSource(`/stream?query=${encodeURIComponent(query)}`);
+
+      const on = (type, fn) => es.addEventListener('message', e => {
+        const d = JSON.parse(e.data);
+        if (d.type === type) fn(d);
+      });
+
+      es.onmessage = e => {
+        const d = JSON.parse(e.data);
+        switch (d.type) {
+
+          case 'run_start':
+            currentRunId = d.run_id;
+            setThinking(`run #${d.run_id} · reading memory…`);
+            break;
+
+          case 'iter_start':
+            currentIterCard = createIterCard(d.iter);
+            setThinking(`iter ${d.iter} · perceiving…`);
+            break;
+
+          case 'memory':
+            if (currentIterCard) {
+              const n = d.hits;
+              addRow(currentIterCard, 'row-memory', '◈',
+                `<span class="memory-pill">${n} memory hit${n !== 1 ? 's' : ''}</span>`);
+            }
+            break;
+
+          case 'goal':
+            upsertGoal(d.text, d.status);
+            break;
+
+          case 'all_done': {
+            const ev = document.createElement('div');
+            ev.className = 'run-event success';
+            ev.innerHTML = `<span class="run-event-icon">✓</span> all goals satisfied · synthesising answer`;
+            $('timeline').insertBefore(ev, sentinel);
+            setThinking('synthesising final answer…');
+            scrollDown();
+            break;
+          }
+
+          case 'tool_call':
+            if (currentIterCard) {
+              addRow(currentIterCard, 'row-tool', '⚙',
+                `<div class="tool-name">${esc(d.name)}</div>
+                 <div class="tool-args">${formatArgs(d.arguments)}</div>`);
+              setThinking(`executing ${d.name}…`);
+            }
+            break;
+
+          case 'action_result':
+            if (currentIterCard) {
+              const cls = d.ok ? 'ok' : 'err';
+              addRow(currentIterCard, 'row-action', '→',
+                `<pre class="action-result ${cls}">${esc(d.summary || '(empty result)')}</pre>`);
+              setThinking('evaluating result…');
+            }
+            break;
+
+          case 'blocked':
+            if (currentIterCard) {
+              addRow(currentIterCard, 'row-blocked', '⛔',
+                `<span class="blocked-msg">${esc(d.error)}</span>`);
+            }
+            break;
+
+          case 'answer_preview':
+            if (currentIterCard) {
+              addRow(currentIterCard, 'row-answer', '💬',
+                `<span class="answer-preview">${esc(d.text)}</span>`);
+            }
+            break;
+
+          case 'attach':
+            if (currentIterCard) {
+              addRow(currentIterCard, 'row-attach', '📎',
+                `<span class="attach-tag">${esc(d.artifact_id)}</span>
+                 <span style="font-size:11px;color:var(--text-dim);margin-left:6px">${(d.size/1024).toFixed(1)} KB</span>`);
+            }
+            break;
+
+          case 'synthesis':
+            break; // handled by final
+
+          case 'final':
+            finalText = d.answer;
+            $('final-answer').textContent = d.answer;
+            $('final-panel').classList.add('visible');
+            scrollDown();
+            break;
+
+          case 'gateway_retry': {
+            const ev = document.createElement('div');
+            ev.className = 'run-event gateway';
+            ev.innerHTML = `<span class="run-event-icon">↺</span> gateway retry (HTTP ${d.status})`;
+            $('timeline').insertBefore(ev, sentinel);
+            setThinking(`retrying after HTTP ${d.status}…`);
+            scrollDown();
+            break;
+          }
+
+          case 'stopped': {
+            const ev = document.createElement('div');
+            ev.className = 'run-event stopped';
+            ev.innerHTML = `<span class="run-event-icon">⏹</span> stopped at MAX_ITERATIONS (${d.max_iter})`;
+            $('timeline').insertBefore(ev, sentinel);
+            scrollDown();
+            break;
+          }
+
+          case 'run_end':
+            hideThinking();
+            stopTimer();
+            $('run-btn').disabled = false;
+            setStatus(d.exit_code === 0 ? 'done' : 'error');
+            if (d.exit_code !== 0 && !finalText) toast('Run ended with an error', 3000);
+            es.close(); es = null;
+            loadStatus();
+            break;
+        }
+      };
+
+      es.onerror = () => {
+        hideThinking();
+        stopTimer();
+        $('run-btn').disabled = false;
+        setStatus('error');
+        if (es) { es.close(); es = null; }
+        loadStatus();
+      };
+    }
+
+    // ── Copy ──────────────────────────────────────────────────────────────────
+    function copyAnswer() {
+      navigator.clipboard.writeText(finalText).then(() => {
+        const btn = $('copy-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    loadStatus();
+    setInterval(loadStatus, 10000);
+  </script>
+
+</body>
+</html>
