@@ -13,8 +13,7 @@ wheels/
 .env
 
 # Agent runtime state (memory + artifact blobs)
-state/memory.json
-state/artifacts/
+state/*
 
 # uv lock (keep pyproject.toml, optionally commit uv.lock)
 # uv.lock  ← uncomment to exclude
