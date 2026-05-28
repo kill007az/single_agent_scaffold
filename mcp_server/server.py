@@ -1,19 +1,23 @@
-"""MCP server for the single-agent scaffold.
+"""MCP server for the single-agent scaffold (Session 6).
 
-Built-in tools (no extra dependencies):
-    ping, get_time, currency_convert,
-    read_file, list_dir, create_file, update_file, edit_file
+Exposes nine tools used by the agent6 Decision role:
 
-Optional tools (install with: uv add --optional mcp-tools):
-    web_search  — Tavily primary, DuckDuckGo fallback
-    fetch_url   — clean markdown via crawl4ai / headless Chromium
+  web_search    — keyword web search (Tavily primary, DuckDuckGo fallback)
+  fetch_url     — fetch clean markdown from a URL via crawl4ai
+  get_time      — current time in any IANA timezone
+  currency_convert — live exchange rates via frankfurter.dev
+  read_file     — read a UTF-8 text file from the sandbox
+  list_dir      — list files and directories in the sandbox
+  create_file   — create a new sandbox file
+  update_file   — overwrite an existing sandbox file
+  edit_file     — find-and-replace inside a sandbox file
+
+Requires .env with TAVILY_API_KEY (optional) and must have ddgs + crawl4ai installed:
+    uv add ddgs tavily-python crawl4ai
 
 Run modes:
     uv run mcp_server/server.py              # stdio (used by agent.py)
     uv run mcp_server/server.py --http 8200  # HTTP+SSE for standalone testing
-
-Add domain-specific tools below using @mcp.tool().
-The function docstring becomes the tool description visible to Decision.
 """
 from __future__ import annotations
 

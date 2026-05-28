@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Single-Agent Scaffold</title>
+  <link rel="preconnect" href="https://fonts.bunny.net" />
+  <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600|jetbrains-mono:400,500" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0a0b0f;
+      --surface:  #111318;
+      --border:   #1c1e28;
+      --border2:  #272a38;
+      --text:     #d4d8e8;
+      --muted:    #484d6a;
+      --dim:      #282b3c;
+
+      --mem:      #a855f7;
+      --mem-bg:   #100820;
+      --mem-dim:  #a855f718;
+
+      --perc:     #f59e0b;
+      --perc-bg:  #140e04;
+      --perc-dim: #f59e0b18;
+
+      --dec:      #3b82f6;
+      --dec-bg:   #080f1e;
+      --dec-dim:  #3b82f618;
+
+      --act:      #22c55e;
+      --act-bg:   #061210;
+      --act-dim:  #22c55e18;
+
+      --err:      #ef4444;
+      --err-bg:   #160606;
+
+      --font: 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ── HEADER ── */
+    #hdr {
+      height: 44px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 9px; }
+    .brand-logo {
+      width: 24px; height: 24px; border-radius: 6px;
+      background: linear-gradient(135deg,#6366f1,#a855f7);
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+    .brand-name { font-weight: 600; font-size: 13px; }
+    .brand-tag {
+      font-family: var(--mono); font-size: 9px; color: var(--muted);
+      border: 1px solid var(--border2); padding: 1px 5px; border-radius: 3px;
+    }
+
+    .hdr-r { display: flex; align-items: center; gap: 14px; }
+    .hstat { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    .hstat-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); transition: background 0.3s; }
+    .hstat.lit .hstat-dot { background: var(--mem); }
+
+    #run-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background 0.3s; }
+    #run-dot.running { background: #6366f1; animation: blink 1.2s ease-in-out infinite; }
+    #run-dot.done    { background: var(--act); }
+    #run-dot.error   { background: var(--err); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    #elapsed { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 34px; }
+
+    .hbtn {
+      font-size: 11px; font-weight: 500; font-family: var(--font);
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--muted); padding: 4px 10px; border-radius: 5px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .hbtn:hover { color: var(--text); background: var(--surface); }
+    .hbtn.red { color: #f87171; border-color: #3d1212; }
+    .hbtn.red:hover { background: #1f0707; border-color: #7f2020; }
+    .hbtn.red.armed { color: var(--err); border-color: var(--err); background: var(--err-bg); }
+
+    /* ── MAIN SPLIT ── */
+    #main-wrap {
+      flex: 1; display: flex; flex-direction: row; overflow: hidden; min-height: 0;
+    }
+
+    /* ── LEFT: CHAT PANEL ── */
+    #conv-panel {
+      width: 18%; min-width: 180px; max-width: 300px;
+      flex-shrink: 0;
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--border);
+    }
+
+    #conv-hdr {
+      flex-shrink: 0;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #conv-hdr-count { font-size: 9px; font-family: var(--mono); color: var(--dim); font-weight: 400; letter-spacing: 0; }
+
+    #conv-list {
+      flex: 1; overflow-y: auto;
+      padding: 12px 10px;
+      display: flex; flex-direction: column;
+      gap: 14px;
+    }
+
+    #conv-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 6px; color: var(--dim); text-align: center;
+      padding: 30px 14px; font-size: 11px;
+    }
+    .conv-empty-glyph { font-size: 22px; opacity: 0.15; }
+
+    /* Chat turn = one user+agent exchange */
+    .chat-turn { display: flex; flex-direction: column; gap: 8px; animation: fadeUp 0.2s ease both; }
+
+    /* User bubble */
+    .chat-q {
+      align-self: flex-end;
+      max-width: 92%;
+      background: #1a1740;
+      border: 1px solid #4338ca30;
+      border-radius: 10px 10px 2px 10px;
+      padding: 8px 11px;
+      font-size: 11px; color: #c7d2fe; line-height: 1.5;
+    }
+
+    /* Typing indicator */
+    .chat-typing {
+      display: flex; align-items: center; gap: 6px;
+      padding: 2px 4px;
+      font-size: 10px; color: var(--muted);
+    }
+    .chat-typing-dots { display: flex; gap: 3px; }
+    .chat-typing-dots span {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--muted);
+      animation: dp 1.4s ease-in-out infinite;
+    }
+    .chat-typing-dots span:nth-child(2){animation-delay:.2s}
+    .chat-typing-dots span:nth-child(3){animation-delay:.4s}
+    @keyframes dp { 0%,80%,100%{transform:scale(0.5);opacity:0.2} 40%{transform:scale(1);opacity:1} }
+
+    /* Agent bubble */
+    .chat-a {
+      align-self: flex-start;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px 10px 10px 10px;
+      padding: 9px 11px;
+      font-size: 11px; color: var(--text); line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .chat-a-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 7px; padding-top: 6px;
+      border-top: 1px solid var(--border);
+      font-size: 9px; color: var(--dim); font-family: var(--mono);
+    }
+    .conv-copy-btn {
+      font-size: 9px; background: transparent;
+      border: 1px solid var(--border2); color: var(--muted);
+      padding: 1px 6px; border-radius: 3px;
+      cursor: pointer; font-family: var(--font); transition: all 0.15s;
+    }
+    .conv-copy-btn:hover { color: var(--text); border-color: #6366f1; }
+    .conv-copy-btn.done { color: var(--act); border-color: var(--act-dim); }
+
+    /* ── RIGHT: PIPELINE ── */
+    #pipeline-wrap {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+    }
+
+    #col-hdrs {
+      display: grid;
+      grid-template-columns: 68px 1fr 1fr 1fr 1fr;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .col-spacer {}
+    .col-h {
+      display: flex; align-items: center; gap: 6px;
+      padding: 9px 14px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+      border-left: 1px solid var(--border);
+      position: relative;
+    }
+    .col-h:not(:last-child)::after {
+      content: '›';
+      position: absolute; right: -7px; top: 50%; transform: translateY(-50%);
+      font-size: 14px; color: var(--dim); z-index: 2;
+    }
+    .col-h.cm { color: var(--mem); }
+    .col-h.cp { color: var(--perc); }
+    .col-h.cd { color: var(--dec); }
+    .col-h.ca { color: var(--act); }
+
+    .col-h::before {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px; background: currentColor; opacity: 0.15;
+    }
+    .col-h.cm.lit::before { opacity: 0.7; }
+    .col-h.cp.lit::before { opacity: 0.7; }
+    .col-h.cd.lit::before { opacity: 0.7; }
+    .col-h.ca.lit::before { opacity: 0.7; }
+
+    #rows-wrap {
+      flex: 1; overflow-y: auto;
+      padding: 10px 14px 14px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+
+    #empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; color: var(--muted); text-align: center;
+      padding: 60px 20px;
+    }
+    .empty-glyph { font-size: 30px; opacity: 0.2; }
+    .empty-sub { font-size: 11px; color: var(--dim); font-family: var(--mono); }
+
+    .irow {
+      display: grid;
+      grid-template-columns: 68px 1fr 1fr 1fr 1fr;
+      gap: 5px;
+      align-items: start;
+      animation: fadeUp 0.22s ease both;
+    }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+    .irow-lbl {
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+      padding-top: 16px; text-align: right; padding-right: 8px;
+      user-select: none;
+    }
+
+    .cell {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      min-height: 76px;
+      padding: 10px 12px;
+      position: relative;
+      transition: border-color 0.3s, background 0.35s, box-shadow 0.3s;
+      overflow: hidden;
+    }
+
+    @keyframes gMem  { 0%,100%{box-shadow:0 0 0 1px #a855f730} 50%{box-shadow:0 0 20px 3px #a855f728} }
+    @keyframes gPerc { 0%,100%{box-shadow:0 0 0 1px #f59e0b30} 50%{box-shadow:0 0 20px 3px #f59e0b28} }
+    @keyframes gDec  { 0%,100%{box-shadow:0 0 0 1px #3b82f630} 50%{box-shadow:0 0 20px 3px #3b82f628} }
+    @keyframes gAct  { 0%,100%{box-shadow:0 0 0 1px #22c55e30} 50%{box-shadow:0 0 20px 3px #22c55e28} }
+
+    .cell.mc.active { border-color: var(--mem);  background: var(--mem-bg);  animation: gMem  1.6s ease-in-out infinite; }
+    .cell.pc.active { border-color: var(--perc); background: var(--perc-bg); animation: gPerc 1.6s ease-in-out infinite; }
+    .cell.dc.active { border-color: var(--dec);  background: var(--dec-bg);  animation: gDec  1.6s ease-in-out infinite; }
+    .cell.ac.active { border-color: var(--act);  background: var(--act-bg);  animation: gAct  1.6s ease-in-out infinite; }
+
+    .cell.mc.done { border-color: var(--mem-dim);  background: var(--mem-bg); }
+    .cell.pc.done { border-color: var(--perc-dim); background: var(--perc-bg); }
+    .cell.dc.done { border-color: var(--dec-dim);  background: var(--dec-bg); }
+    .cell.ac.done { border-color: var(--act-dim);  background: var(--act-bg); }
+    .cell.errored { border-color: #ef444428; background: var(--err-bg); }
+
+    .cwait {
+      display: none;
+      position: absolute; bottom: 9px; left: 12px;
+      gap: 3px; align-items: center;
+    }
+    .cwait.vis { display: flex; }
+    .cwait span {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--muted);
+      animation: dp 1.4s ease-in-out infinite;
+    }
+    .cwait span:nth-child(2){animation-delay:.2s}
+    .cwait span:nth-child(3){animation-delay:.4s}
+
+    .cc { display:flex; flex-direction:column; gap:4px; }
+
+    .mem-n { font-family: var(--mono); font-size: 26px; font-weight: 500; color: var(--mem); line-height: 1; }
+    .mem-lbl { font-size: 10px; color: var(--muted); }
+
+    .gl { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.45; animation: fadeUp 0.18s ease both; }
+    .gl-ic { flex-shrink:0; font-size:10px; margin-top:2px; }
+    .gl.open .gl-ic { color: var(--perc); }
+    .gl.done .gl-ic { color: var(--act); }
+    .gl.done .gl-tx { color: var(--muted); text-decoration: line-through; text-decoration-color: #333; }
+    .gl-tx { color: var(--text); }
+
+    .attach-tag {
+      margin-top: 5px; display: inline-flex; align-items: center; gap: 5px;
+      font-size: 9px; font-family: var(--mono); color: #818cf8;
+      background: #1e1b4b; border: 1px solid #3730a350;
+      padding: 2px 7px; border-radius: 3px;
+    }
+
+    .dec-kind { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+    .dec-kind.tool    { color: var(--dec); }
+    .dec-kind.ans     { color: var(--perc); }
+    .dec-kind.blocked { color: var(--err); }
+
+    .dec-fn { font-family: var(--mono); font-size: 12px; font-weight:500; color: #60a5fa; margin-bottom:4px; }
+    .dec-args { display:flex; flex-direction:column; gap:2px; }
+    .dec-arg { display:flex; gap:5px; font-size:11px; }
+    .dec-ak { color: var(--muted); min-width: 0; }
+    .dec-av { color: var(--text); font-family: var(--mono); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dec-ans-txt { font-size:11px; color:#fbbf24; line-height:1.5; }
+    .dec-err-txt { font-size:11px; color:#f87171; font-family:var(--mono); }
+
+    .act-ok-lbl { font-size:10px; color: var(--act); font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:4px; }
+    .act-err-lbl { font-size:10px; color: var(--err); font-weight:600; margin-bottom:5px; }
+    .act-skip { font-size:11px; color:var(--muted); font-style:italic; }
+    .act-fields { display:flex; flex-direction:column; gap:5px; }
+    .af { display:flex; flex-direction:column; gap:1px; }
+    .af-k { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:0.04em; }
+    .af-v { color:var(--text); font-family:var(--mono); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    .ev-row {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--muted);
+      padding: 3px 72px;
+      animation: fadeUp 0.2s ease both;
+    }
+    .ev-row::before,.ev-row::after { content:''; display:block; height:1px; background:var(--border); }
+    .ev-row::before { width:12px; flex-shrink:0; }
+    .ev-row::after  { flex:1; }
+    .ev-row.done-ev  { color:var(--act); }
+    .ev-row.stop-ev  { color:var(--err); }
+    .ev-row.gw-ev    { color:var(--perc); }
+
+    /* ── QUERY BAR ── */
+    #qbar {
+      border-top: 1px solid var(--border);
+      padding: 10px 14px;
+      flex-shrink: 0;
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    #qwrap { flex:1; }
+    #qi {
+      width: 100%;
+      font-family: var(--font); font-size: 13px;
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 8px; color: var(--text);
+      padding: 8px 13px; resize: none; outline: none;
+      min-height: 38px; max-height: 90px;
+      transition: border-color 0.15s; display: block;
+    }
+    #qi::placeholder { color: var(--dim); }
+    #qi:focus { border-color: #6366f1; }
+
+    #chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+    .chip {
+      font-size: 10px; background: transparent;
+      border: 1px solid var(--border); color: var(--muted);
+      padding: 2px 9px; border-radius: 20px;
+      cursor: pointer; font-family: var(--font); transition: all 0.15s;
+    }
+    .chip:hover { border-color:#6366f1; color:var(--text); }
+
+    .qbtns { display:flex; flex-direction:column; gap:5px; }
+    #run-btn {
+      font-family: var(--font); font-size:13px; font-weight:500;
+      background:#6366f1; color:#fff; border:none;
+      border-radius:8px; padding:8px 20px;
+      cursor:pointer; transition:background 0.15s; white-space:nowrap;
+    }
+    #run-btn:hover { background:#4f51d9; }
+    #run-btn:disabled { opacity:0.4; cursor:default; }
+    #clr-btn {
+      font-size:11px; background:transparent;
+      border:1px solid var(--border); color:var(--muted);
+      border-radius:6px; padding:4px 10px;
+      cursor:pointer; font-family:var(--font);
+      transition:all 0.15s; text-align:center;
+    }
+    #clr-btn:hover { color:var(--text); border-color:var(--border2); }
+
+    #toast {
+      position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(4px);
+      background:var(--surface); border:1px solid var(--border2);
+      color:var(--text); font-size:11px; padding:6px 14px;
+      border-radius:6px; opacity:0; transition:all 0.2s;
+      pointer-events:none; z-index:100; white-space:nowrap;
+    }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header id="hdr">
+  <div class="brand">
+    <div class="brand-logo">⬡</div>
+    <span class="brand-name">single-agent-scaffold</span>
+    <span class="brand-tag">agent6</span>
+  </div>
+  <div class="hdr-r">
+    <div class="hstat" id="mem-stat">
+      <div class="hstat-dot"></div><span id="mem-ct">0 mem</span>
+    </div>
+    <div class="hstat" id="art-stat">
+      <div class="hstat-dot"></div><span id="art-ct">0 art</span>
+    </div>
+    <div id="run-dot"></div>
+    <code id="elapsed">—</code>
+    <button class="hbtn red" id="wipe-btn" onclick="doWipe()">Wipe</button>
+  </div>
+</header>
+
+<!-- MAIN SPLIT -->
+<div id="main-wrap">
+
+  <!-- LEFT: chat panel -->
+  <div id="conv-panel">
+    <div id="conv-hdr">
+      <span>Conversation</span>
+      <span id="conv-hdr-count"></span>
+    </div>
+    <div id="conv-list">
+      <div id="conv-empty">
+        <div class="conv-empty-glyph">⬡</div>
+        <div>No runs yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: pipeline -->
+  <div id="pipeline-wrap">
+    <div id="col-hdrs">
+      <div class="col-spacer"></div>
+      <div class="col-h cm" id="ch-mem"><span>◈</span> Memory</div>
+      <div class="col-h cp" id="ch-perc"><span>◉</span> Perception</div>
+      <div class="col-h cd" id="ch-dec"><span>⚙</span> Decision</div>
+      <div class="col-h ca" id="ch-act"><span>⚡</span> Action</div>
+    </div>
+    <div id="rows-wrap">
+      <div id="empty">
+        <div class="empty-glyph">⬡</div>
+        <div>Run a query to watch the agent loop</div>
+        <div class="empty-sub">Memory → Perception → Decision → Action</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- QUERY BAR -->
+<footer id="qbar">
+  <div id="qwrap">
+    <textarea id="qi" rows="1"
+      placeholder="Ask anything… or click a chip to load a query."
+      oninput="resize(this)" onkeydown="onKey(event)"></textarea>
+    <div id="chips">
+      <button class="chip" onclick="set('Fetch https://en.wikipedia.org/wiki/Claude_Shannon and tell me his birth date, death date, and three key contributions to information theory.')">Query A: Claude Shannon Wikipedia</button>
+      <button class="chip" onclick="set('Find 3 family-friendly things to do in Tokyo this weekend. Check Saturday\'s weather forecast there and tell me which one is most appropriate.')">Query B: Tokyo weekend + weather</button>
+      <button class="chip" onclick="set('My mom\'s birthday is 15 May 2026. Remember that and give me a calendar reminder for two weeks before and on the day.')">Query C: Mom's birthday reminder</button>
+      <button class="chip" onclick="set('Search for \'Python asyncio best practices\', read the top 3 results, and give me a short numbered list of the advice they agree on.')">Query D: asyncio best practices</button>
+    </div>
+  </div>
+  <div class="qbtns">
+    <button id="run-btn" onclick="run()">&#9654; Run</button>
+    <button id="clr-btn" onclick="resetUI()">Clear</button>
+  </div>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+// ── state ─────────────────────────────────────────────────────────────────
+let es = null, tid = null, t0 = null;
+let rows = {};
+let convEntries = [];
+let currentQuery = '';
+let activeTurnEl = null;
+let wipeArmed = false, wipeTmr = null;
+let autoScroll = true;
+
+// ── helpers ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function toast(msg, ms=2200) {
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),ms);
+}
+function set(q) { $('qi').value=q; resize($('qi')); }
+function resize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,90)+'px'; }
+function onKey(e) { if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();run();} }
+
+function startClock() {
+  t0=Date.now(); $('elapsed').textContent='0.0s';
+  tid=setInterval(()=>{ $('elapsed').textContent=((Date.now()-t0)/1000).toFixed(1)+'s'; },100);
+}
+function stopClock() { clearInterval(tid); tid=null; }
+function dot(cls) { $('run-dot').className=cls; }
+
+const STAGE_COL = { mem:'ch-mem', perc:'ch-perc', dec:'ch-dec', act:'ch-act' };
+function setActiveCol(stage) {
+  ['ch-mem','ch-perc','ch-dec','ch-act'].forEach(id=>{
+    const el=$(id); el.classList.remove('lit');
+    if(id===STAGE_COL[stage]) el.classList.add('lit');
+  });
+}
+function clearCols() {
+  ['ch-mem','ch-perc','ch-dec','ch-act'].forEach(id=>$(id).classList.remove('lit'));
+}
+
+// ── session status ─────────────────────────────────────────────────────────
+async function loadStatus() {
+  try {
+    const r=await fetch('/status'), s=await r.json();
+    $('mem-ct').textContent=`${s.memory_items} mem`;
+    $('art-ct').textContent=`${s.artifacts} art`;
+    $('mem-stat').classList.toggle('lit', s.memory_items>0);
+  } catch(_){}
+}
+
+// ── wipe ──────────────────────────────────────────────────────────────────
+async function doWipe() {
+  const btn=$('wipe-btn');
+  if(!wipeArmed) {
+    wipeArmed=true; btn.classList.add('armed'); btn.textContent='Confirm?';
+    wipeTmr=setTimeout(()=>{ wipeArmed=false; btn.classList.remove('armed'); btn.textContent='Wipe'; },3000);
+    return;
+  }
+  clearTimeout(wipeTmr); wipeArmed=false; btn.classList.remove('armed'); btn.textContent='Wipe';
+  const s=await(await fetch('/wipe',{method:'POST'})).json();
+  toast(`Wiped ${s.wiped.memory_items} memories · ${s.wiped.artifacts} artifacts`);
+  resetUI();
+  loadStatus();
+}
+
+// ── chat panel ─────────────────────────────────────────────────────────────
+function scrollConv() {
+  const list=$('conv-list');
+  list.scrollTo({top:list.scrollHeight, behavior:'smooth'});
+}
+
+function showActiveConv(query) {
+  const emp=$('conv-empty'); if(emp) emp.remove();
+
+  const div=document.createElement('div');
+  div.className='chat-turn';
+  div.id='active-turn';
+  div.innerHTML=`
+    <div class="chat-q">${esc(query)}</div>
+    <div class="chat-typing" id="chat-typing">
+      <div class="chat-typing-dots"><span></span><span></span><span></span></div>
+      <span>thinking…</span>
+    </div>`;
+  $('conv-list').appendChild(div);
+  activeTurnEl=div;
+  scrollConv();
+}
+
+function finaliseConvEntry(answer, elapsedSec) {
+  if(!activeTurnEl) return;
+
+  const typing=activeTurnEl.querySelector('#chat-typing');
+  if(typing) typing.remove();
+
+  const ts=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const idx=convEntries.length;
+  convEntries.push({query:currentQuery, answer, elapsedSec});
+
+  const aDiv=document.createElement('div');
+  aDiv.className='chat-a';
+  aDiv.innerHTML=`${esc(answer)}<div class="chat-a-meta">
+    <span>${ts} · ${elapsedSec.toFixed(1)}s</span>
+    <button class="conv-copy-btn" onclick="copyEntry(event,${idx})">Copy</button>
+  </div>`;
+  activeTurnEl.appendChild(aDiv);
+  activeTurnEl.id=`ce${idx}`;
+  activeTurnEl=null;
+
+  updateConvCount();
+  scrollConv();
+}
+
+function updateConvCount() {
+  const n=convEntries.length;
+  $('conv-hdr-count').textContent = n ? `${n} run${n!==1?'s':''}` : '';
+}
+
+function copyEntry(e, idx) {
+  e.stopPropagation();
+  const btn=e.target;
+  navigator.clipboard.writeText(convEntries[idx].answer).then(()=>{
+    btn.textContent='Copied!'; btn.classList.add('done');
+    setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('done'); },2000);
+  });
+}
+
+// ── reset ─────────────────────────────────────────────────────────────────
+function resetUI() {
+  if(es){es.close();es=null;}
+  stopClock(); clearCols(); dot('');
+  $('elapsed').textContent='—';
+  $('rows-wrap').innerHTML=`
+    <div id="empty">
+      <div class="empty-glyph">⬡</div>
+      <div>Run a query to watch the agent loop</div>
+      <div class="empty-sub">Memory → Perception → Decision → Action</div>
+    </div>`;
+  $('conv-list').innerHTML=`
+    <div id="conv-empty">
+      <div class="conv-empty-glyph">⬡</div>
+      <div>No runs yet</div>
+    </div>`;
+  rows={}; convEntries=[]; currentQuery=''; activeTurnEl=null;
+  updateConvCount();
+  $('run-btn').disabled=false;
+}
+
+// ── row / cell management ─────────────────────────────────────────────────
+function getRow(iter) {
+  if(rows[iter]) return rows[iter];
+  const emp=$('empty'); if(emp) emp.remove();
+  const div=document.createElement('div');
+  div.className='irow'; div.id=`ir${iter}`;
+  div.innerHTML=`
+    <div class="irow-lbl">iter ${iter}</div>
+    ${['mc','pc','dc','ac'].map(cls=>`
+      <div class="cell ${cls}" id="${cls}${iter}">
+        <div class="cc" id="cc-${cls}${iter}"></div>
+        <div class="cwait" id="cw-${cls}${iter}"><span></span><span></span><span></span></div>
+      </div>`).join('')}`;
+  $('rows-wrap').appendChild(div);
+  const mk=(cls)=>({cell:$(`${cls}${iter}`),cc:$(`cc-${cls}${iter}`),cw:$(`cw-${cls}${iter}`)});
+  rows[iter]={mem:mk('mc'),perc:mk('pc'),dec:mk('dc'),act:mk('ac')};
+  return rows[iter];
+}
+
+function activate(c, stage) {
+  c.cell.classList.remove('active','done');
+  c.cell.classList.add('active');
+  c.cw.classList.add('vis');
+  setActiveCol(stage);
+}
+function deactivate(c) {
+  c.cell.classList.remove('active');
+  c.cell.classList.add('done');
+  c.cw.classList.remove('vis');
+}
+function fillAndDeactivate(c) { c.cw.classList.remove('vis'); }
+
+function scrollEnd() {
+  if(!autoScroll) return;
+  const w=$('rows-wrap');
+  w.scrollTo({top:w.scrollHeight, behavior:'smooth'});
+}
+
+// ── event handler ─────────────────────────────────────────────────────────
+function handleEv(d) {
+  const row = d.iter ? getRow(d.iter) : null;
+
+  switch(d.type) {
+
+    case 'run_start':
+      dot('running');
+      showActiveConv(currentQuery);
+      break;
+
+    case 'iter_start': {
+      const r=getRow(d.iter);
+      activate(r.mem,'mem');
+      scrollEnd();
+      break;
+    }
+
+    case 'memory': {
+      const r=getRow(d.iter);
+      fillAndDeactivate(r.mem);
+      r.mem.cc.innerHTML=`
+        <div class="mem-n">${d.hits}</div>
+        <div class="mem-lbl">${d.hits===1?'memory hit':'memory hits'}</div>`;
+      deactivate(r.mem);
+      activate(r.perc,'perc');
+      scrollEnd();
+      break;
+    }
+
+    case 'goal': {
+      const r=getRow(d.iter);
+      r.perc.cw.classList.remove('vis');
+      const el=document.createElement('div');
+      el.className=`gl ${d.status}`;
+      el.innerHTML=`<span class="gl-ic">${d.status==='done'?'✓':'○'}</span><span class="gl-tx">${esc(d.text)}</span>`;
+      r.perc.cc.appendChild(el);
+      scrollEnd();
+      break;
+    }
+
+    case 'attach': {
+      const r=getRow(d.iter);
+      const tag=document.createElement('div');
+      tag.className='attach-tag';
+      tag.innerHTML=`📎 ${esc(d.artifact_id)} <span style="color:var(--muted)">${(d.size/1024).toFixed(1)} KB</span>`;
+      r.perc.cc.appendChild(tag);
+      break;
+    }
+
+    case 'tool_call': {
+      const r=getRow(d.iter);
+      deactivate(r.perc);
+      activate(r.dec,'dec');
+      fillAndDeactivate(r.dec);
+      const argsH = typeof d.arguments==='object'
+        ? Object.entries(d.arguments).map(([k,v])=>
+            `<div class="dec-arg"><span class="dec-ak">${esc(k)}</span><span class="dec-av">${esc(String(v))}</span></div>`
+          ).join('')
+        : `<div class="dec-arg"><span class="dec-av">${esc(String(d.arguments))}</span></div>`;
+      r.dec.cc.innerHTML=`
+        <div class="dec-kind tool">Tool call</div>
+        <div class="dec-fn">${esc(d.name)}</div>
+        <div class="dec-args">${argsH}</div>`;
+      scrollEnd();
+      break;
+    }
+
+    case 'answer_preview': {
+      const r=getRow(d.iter);
+      deactivate(r.perc);
+      activate(r.dec,'dec');
+      fillAndDeactivate(r.dec);
+      r.dec.cc.innerHTML=`
+        <div class="dec-kind ans">Direct answer</div>
+        <div class="dec-ans-txt">${esc(d.text)}</div>`;
+      deactivate(r.dec);
+      deactivate(r.act);
+      clearCols();
+      scrollEnd();
+      break;
+    }
+
+    case 'blocked': {
+      const r=getRow(d.iter);
+      deactivate(r.perc);
+      fillAndDeactivate(r.dec);
+      r.dec.cc.innerHTML=`
+        <div class="dec-kind blocked">Blocked</div>
+        <div class="dec-err-txt">${esc(String(d.error).substring(0,140))}</div>`;
+      deactivate(r.dec);
+      r.act.cc.innerHTML=`<div class="act-skip">not executed</div>`;
+      r.act.cw.classList.remove('vis');
+      r.act.cell.classList.add('done');
+      clearCols();
+      scrollEnd();
+      break;
+    }
+
+    case 'action_result': {
+      const r=getRow(d.iter);
+      deactivate(r.dec);
+      activate(r.act,'act');
+      fillAndDeactivate(r.act);
+      if(d.ok) {
+        const parts=(d.summary||'').split('  ·  ').filter(Boolean);
+        const fieldsH=parts.map(p=>{
+          const idx=p.indexOf(': ');
+          if(idx>-1){
+            return `<div class="af">
+              <span class="af-k">${esc(p.substring(0,idx))}</span>
+              <span class="af-v" title="${esc(p.substring(idx+2))}">${esc(p.substring(idx+2))}</span>
+            </div>`;
+          }
+          return `<div class="af"><span class="af-v">${esc(p)}</span></div>`;
+        }).join('');
+        r.act.cc.innerHTML=`
+          <div class="act-ok-lbl"><span>✓</span> result</div>
+          <div class="act-fields">${fieldsH||`<span class="act-skip">(empty)</span>`}</div>`;
+      } else {
+        r.act.cc.innerHTML=`
+          <div class="act-err-lbl">⛔ error</div>
+          <div class="dec-err-txt">${esc((d.summary||'').substring(0,200))}</div>`;
+        r.act.cell.classList.add('errored');
+      }
+      setTimeout(()=>{ deactivate(r.act); clearCols(); },450);
+      scrollEnd();
+      break;
+    }
+
+    case 'all_done': {
+      const ev=document.createElement('div');
+      ev.className='irow ev-row done-ev';
+      ev.textContent='all goals satisfied — synthesising answer';
+      $('rows-wrap').appendChild(ev);
+      clearCols(); scrollEnd();
+      break;
+    }
+
+    case 'stopped': {
+      const ev=document.createElement('div');
+      ev.className='irow ev-row stop-ev';
+      ev.textContent=`stopped — reached MAX_ITERATIONS (${d.max_iter})`;
+      $('rows-wrap').appendChild(ev);
+      clearCols(); scrollEnd();
+      break;
+    }
+
+    case 'gateway_retry': {
+      const ev=document.createElement('div');
+      ev.className='irow ev-row gw-ev';
+      ev.textContent=`gateway retry — HTTP ${d.status}`;
+      $('rows-wrap').appendChild(ev);
+      scrollEnd();
+      break;
+    }
+
+    case 'final': {
+      const elapsed = t0 ? (Date.now()-t0)/1000 : 0;
+      const answer = d.answer.replace(/\\n/g, '\n');
+      finaliseConvEntry(answer, elapsed);
+      scrollEnd();
+      break;
+    }
+
+    case 'run_end':
+      stopClock(); clearCols();
+      $('run-btn').disabled=false;
+      dot(d.exit_code===0?'done':'error');
+      if(d.exit_code!==0 && activeTurnEl) {
+        const typing=activeTurnEl.querySelector('#chat-typing');
+        if(typing) typing.innerHTML='<span style="color:var(--err);font-size:10px">run failed</span>';
+      }
+      if(es){es.close();es=null;}
+      loadStatus();
+      break;
+  }
+}
+
+// ── run ───────────────────────────────────────────────────────────────────
+function run() {
+  const q=$('qi').value.trim();
+  if(!q) return;
+  if(es) es.close();
+  currentQuery=q;
+
+  // clear the textarea
+  $('qi').value='';
+  resize($('qi'));
+
+  stopClock(); clearCols(); rows={};
+  $('rows-wrap').innerHTML='';
+  $('run-btn').disabled=true;
+  dot('running'); startClock();
+  autoScroll=true;
+
+  es=new EventSource(`/stream?query=${encodeURIComponent(q)}`);
+  es.onmessage=e=>handleEv(JSON.parse(e.data));
+  es.onerror=()=>{
+    stopClock(); clearCols(); $('run-btn').disabled=false; dot('error');
+    if(activeTurnEl) {
+      const typing=activeTurnEl.querySelector('#chat-typing');
+      if(typing) typing.innerHTML='<span style="color:var(--err);font-size:10px">connection error</span>';
+    }
+    activeTurnEl=null;
+    if(es){es.close();es=null;}
+    loadStatus();
+  };
+}
+
+// ── auto-scroll detection ─────────────────────────────────────────────────
+$('rows-wrap').addEventListener('scroll',()=>{
+  const w=$('rows-wrap');
+  autoScroll=w.scrollTop+w.clientHeight>=w.scrollHeight-50;
+});
+
+// ── init ──────────────────────────────────────────────────────────────────
+loadStatus();
+setInterval(loadStatus,10000);
+</script>
+</body>
+</html>
