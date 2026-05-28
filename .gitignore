@@ -34,3 +34,5 @@ llm_gatewayV3/.DS_Store
 
 # Claude Code local settings
 .claude/
+
+CONTEXT/*
