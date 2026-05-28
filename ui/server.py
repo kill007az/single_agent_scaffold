@@ -13,8 +13,10 @@ import argparse
 import ast
 import asyncio
 import json
+import logging
 import re
 import sys
+import time
 from pathlib import Path
 
 import uvicorn
@@ -27,6 +29,15 @@ STATIC = Path(__file__).parent / "static"
 STATE = ROOT / "state"
 
 app = FastAPI(title="Single-Agent Scaffold UI")
+
+# ── Logger ────────────────────────────────────────────────────────────────────
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
+log = logging.getLogger("ui")
+log.setLevel(logging.INFO)
+log.addHandler(_handler)
+log.propagate = False
 
 
 # ── Log line patterns ─────────────────────────────────────────────────────────
@@ -68,6 +79,22 @@ def _summarise_action(lines: list[str]) -> str:
     full = "\n".join(lines).strip()
     if not full:
         return ""
+
+    # Artifact descriptor: "[artifact art:xxx, N bytes] preview {...}"
+    art_m = re.match(r'^\[artifact (art:\w+), (\d+) bytes\] preview (.*)$', full, re.DOTALL)
+    if art_m:
+        handle = art_m.group(1)
+        size_kb = int(art_m.group(2)) / 1024
+        preview_raw = art_m.group(3).strip()
+        parts = [f"artifact: {handle}", f"size: {size_kb:.1f} KB"]
+        # Extract first useful string field from (possibly truncated) JSON
+        for field in ("title", "human", "url", "content"):
+            m = re.search(rf'"{field}":\s*"([^"{{}}]{{1,80}})', preview_raw)
+            if m:
+                parts.append(f"{field}: {m.group(1)}")
+                break
+        return "  ·  ".join(parts)
+
     try:
         data = json.loads(full)
         if isinstance(data, dict):
@@ -88,8 +115,11 @@ def _sse(event_type: str, payload: dict) -> str:
 @app.get("/stream")
 async def stream(query: str, request: Request):
     async def generate():
+        t0 = time.monotonic()
+        log.info(f"RUN START  query={query!r}")
+
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(ROOT / "agent.py"), query,
+            sys.executable, "-u", str(ROOT / "agent.py"), query,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(ROOT),
@@ -97,6 +127,7 @@ async def stream(query: str, request: Request):
 
         action_buf: list[str] = []
         current_iter = 0
+        run_id = ""
 
         def flush_action() -> str | None:
             if not action_buf:
@@ -104,11 +135,14 @@ async def stream(query: str, request: Request):
             summary = _summarise_action(action_buf)
             action_buf.clear()
             ok = not summary.lower().startswith("error")
+            status = "ok" if ok else "ERR"
+            log.info(f"  iter {current_iter}  action  [{status}]  {summary[:100]}")
             return _sse("action_result", {"iter": current_iter, "summary": summary, "ok": ok})
 
         try:
             async for raw in proc.stdout:
                 if await request.is_disconnected():
+                    log.info(f"RUN ABORT  client disconnected  (iter {current_iter})")
                     proc.kill()
                     break
 
@@ -139,37 +173,49 @@ async def stream(query: str, request: Request):
 
                 # ── Parse known line patterns ──────────────────────────────
                 if m := _RUN_START.match(line):
-                    yield _sse("run_start", {"run_id": m.group(1), "query": m.group(2)})
+                    run_id = m.group(1)
+                    yield _sse("run_start", {"run_id": run_id, "query": m.group(2)})
 
                 elif m := _ITER_START.match(line):
                     current_iter = int(m.group(1))
+                    log.info(f"  iter {current_iter}  start")
                     yield _sse("iter_start", {"iter": current_iter})
 
                 elif m := _MEMORY.match(line):
-                    yield _sse("memory", {"iter": current_iter, "hits": int(m.group(1))})
+                    hits = int(m.group(1))
+                    log.info(f"  iter {current_iter}  memory   {hits} hits")
+                    yield _sse("memory", {"iter": current_iter, "hits": hits})
 
                 elif m := _GOAL.match(line):
+                    status, text = m.group(1), m.group(2).strip()
+                    marker = "+" if status == "done" else "o"
+                    log.info(f"  iter {current_iter}  goal     [{marker}] {text[:80]}")
                     yield _sse("goal", {
                         "iter": current_iter,
-                        "status": m.group(1),
-                        "text": m.group(2).strip(),
+                        "status": status,
+                        "text": text,
                         "attach": m.group(3),
                     })
 
                 elif m := _TOOL_CALL.match(line):
+                    name, args_raw = m.group(1), m.group(2)
+                    log.info(f"  iter {current_iter}  decision TOOL_CALL {name}({args_raw[:60]})")
                     yield _sse("tool_call", {
                         "iter": current_iter,
-                        "name": m.group(1),
-                        "arguments": _try_parse_args(m.group(2)),
+                        "name": name,
+                        "arguments": _try_parse_args(args_raw),
                     })
 
                 elif m := _ANSWER.match(line):
+                    log.info(f"  iter {current_iter}  decision ANSWER    {m.group(1)[:80]}")
                     yield _sse("answer_preview", {"iter": current_iter, "text": m.group(1)})
 
                 elif m := _VALIDATE.match(line):
+                    log.info(f"  iter {current_iter}  BLOCKED  {m.group(1)[:80]}")
                     yield _sse("blocked", {"iter": current_iter, "error": m.group(1)})
 
                 elif m := _ATTACH.match(line):
+                    log.info(f"  iter {current_iter}  attach   {m.group(1)} ({m.group(2)} bytes)")
                     yield _sse("attach", {
                         "iter": current_iter,
                         "artifact_id": m.group(1),
@@ -177,18 +223,25 @@ async def stream(query: str, request: Request):
                     })
 
                 elif _ALL_DONE.match(line):
+                    log.info(f"  iter {current_iter}  all goals satisfied — synthesising")
                     yield _sse("all_done", {"iter": current_iter})
 
                 elif m := _SYNTHESIS.match(line):
+                    log.info(f"  synthesis  {m.group(1)[:100]}")
                     yield _sse("synthesis", {"text": m.group(1)})
 
                 elif m := _FINAL.match(line):
+                    elapsed = time.monotonic() - t0
+                    log.info(f"RUN END    exit=0  {elapsed:.1f}s  run={run_id}")
+                    log.info(f"  FINAL: {m.group(1)[:120]}")
                     yield _sse("final", {"answer": m.group(1)})
 
                 elif m := _STOPPED.match(line):
+                    log.info(f"  STOPPED at MAX_ITERATIONS={m.group(1)}")
                     yield _sse("stopped", {"max_iter": int(m.group(1))})
 
                 elif m := _GW_RETRY.match(line):
+                    log.info(f"  gateway retry  HTTP {m.group(1)}")
                     yield _sse("gateway_retry", {"status": m.group(1)})
 
         finally:
@@ -196,7 +249,11 @@ async def stream(query: str, request: Request):
             if flush_ev:
                 yield flush_ev
             await proc.wait()
-            yield _sse("run_end", {"exit_code": proc.returncode})
+            rc = proc.returncode
+            if rc != 0:
+                elapsed = time.monotonic() - t0
+                log.info(f"RUN END    exit={rc}  {elapsed:.1f}s  run={run_id}")
+            yield _sse("run_end", {"exit_code": rc})
 
     return StreamingResponse(
         generate(),
@@ -226,6 +283,7 @@ async def wipe():
             f.unlink(missing_ok=True)
             art_wiped += 1
 
+    log.info(f"WIPE       memory={mem_wiped} items  artifacts={art_wiped} files")
     return {"ok": True, "wiped": {"memory_items": mem_wiped, "artifacts": art_wiped}}
 
 
@@ -251,5 +309,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Single-Agent Scaffold UI")
     parser.add_argument("--port", type=int, default=7100)
     args = parser.parse_args()
-    print(f"\n  Single-Agent Scaffold  ->  http://127.0.0.1:{args.port}\n")
+    log.info(f"Single-Agent Scaffold UI  ->  http://127.0.0.1:{args.port}")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Force UTF-8 output on Windows so box-drawing characters don't crash
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
@@ -178,7 +178,7 @@ async def run(query: str) -> str:
             print(f"\n[stopped] reached MAX_ITERATIONS={MAX_ITERATIONS}")
 
     final = _final_answer(history)
-    print(f"\nFINAL: {final}\n")
+    print(f"\nFINAL: {final.replace(chr(10), '\\n')}\n")
     return final
 
 

@@ -26,6 +26,15 @@ STEP 3 — IF CALLING A TOOL
   b. Supply a value for EVERY argument the goal specifies. Never call a tool with empty arguments when the goal names specific values.
   c. Check HISTORY: if this exact tool+args combination appeared before and errored, try different arguments or a different approach.
 
+STEP 3b — ARTIFACT HANDLE GUARD
+  Strings beginning with "art:" are internal artifact handles — they point to the byte
+  store, not to a file path or URL. MCP tools reject them at dispatch time.
+  - NEVER pass an art: string as a tool argument (to read_file, fetch_url, or any other tool).
+  - When a goal requires the content of an artifact, that content already appears in the
+    ATTACHED ARTIFACTS section below. Read it there and answer directly.
+  - If the content you need is not in ATTACHED ARTIFACTS, call the appropriate tool with the
+    real URL or path (not the handle).
+
 STEP 4 — IF ANSWERING DIRECTLY
   a. The answer must directly address the goal — not describe what was done.
   b. If the goal asks for a list, comparison, or synthesis: minimum 3 sentences or a numbered list.

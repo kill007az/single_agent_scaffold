@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Single-agent scaffold built on the agent6 architecture (Memory / Perception / Decision / Action + LLM Gateway V3 + MCP server)"
 requires-python = ">=3.13"
 dependencies = [
+    "crawl4ai>=0.8.6",
+    "ddgs>=9.14.4",
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
     "jsonschema>=4.26.0",
     "mcp>=1.27.1",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
+    "tavily-python>=0.7.24",
     "tzdata>=2026.2",
     "uvicorn[standard]>=0.48.0",
 ]
