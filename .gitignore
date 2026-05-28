@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment / secrets
+.env
+
+# Agent runtime state (memory + artifact blobs)
+state/memory.json
+state/artifacts/
+
+# uv lock (keep pyproject.toml, optionally commit uv.lock)
+# uv.lock  ← uncomment to exclude
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gateway runtime
+llm_gatewayV3/*.db
+llm_gatewayV3/*.log
+llm_gatewayV3/.DS_Store
+
+# Claude Code local settings
+.claude/
