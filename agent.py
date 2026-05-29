@@ -29,6 +29,7 @@ if sys.platform == "win32":
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.sse import sse_client
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -39,19 +40,26 @@ from agent.memory import memory
 from agent.schemas import ActionRequest, Goal, MCPTool
 
 MCP_SERVER = Path(__file__).parent / "mcp_server" / "server.py"
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL")  # e.g. http://127.0.0.1:8200/sse
 MAX_ITERATIONS = 20
 
 
 @asynccontextmanager
 async def mcp_session():
-    params = StdioServerParameters(
-        command=sys.executable,
-        args=[str(MCP_SERVER)],
-    )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    if MCP_SERVER_URL:
+        async with sse_client(MCP_SERVER_URL) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                yield session
+    else:
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[str(MCP_SERVER)],
+        )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                yield session
 
 
 def _mcp_tools_for_decision(tools: list) -> list[MCPTool]:

@@ -18,12 +18,18 @@ STEP 2 — DECOMPOSE OR PRESERVE
     a. Copy the prior goal list exactly — same order, same count, same text.
     b. Do NOT reorder, insert in the middle, or drop any goal.
 
+
 STEP 3 — MARK DONE FLAGS
   For each goal, scan the HISTORY for evidence that it was satisfied:
   - A matching "answer" event whose text directly addresses the goal → done=true
   - A matching "action" event (tool call + result) that completed the goal → done=true
   - No matching evidence → done=false
   Sticky rule: once done=true, it must remain true in all future iterations.
+
+  ⚠ FETCH GOAL DONE-FLAG RULE:
+  A goal that says "fetch", "read", or "retrieve the content of" N URLs is only done=true
+  when fetch_url has been called N times and N artifacts appear in HISTORY.
+  web_search appearing in HISTORY does NOT count as fetching — snippets are not full content.
 
 STEP 4 — ARTIFACT ATTACHMENT
   For the first goal where done=false:
@@ -52,23 +58,6 @@ Schema:
       "done": <true|false>,
       "artifact_index": <integer, -1 means no attachment>
     }
-  ]
-}
-
-── EXAMPLES ────────────────────────────────────────────────────────────────────
-Example A — First iteration, query: "Search for asyncio best practices and summarise them."
-{
-  "goals": [
-    {"text": "Search for Python asyncio best practices", "done": false, "artifact_index": -1},
-    {"text": "Summarise the common advice from the results", "done": false, "artifact_index": -1}
-  ]
-}
-
-Example B — Second iteration, search is done, artifact exists at index 0:
-{
-  "goals": [
-    {"text": "Search for Python asyncio best practices", "done": true, "artifact_index": -1},
-    {"text": "Summarise the common advice from the results", "done": false, "artifact_index": 0}
   ]
 }
 

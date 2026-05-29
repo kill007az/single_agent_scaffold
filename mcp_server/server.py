@@ -1,27 +1,20 @@
-"""MCP server for the single-agent scaffold (Session 6).
-
-Exposes nine tools used by the agent6 Decision role:
-
-  web_search    — keyword web search (Tavily primary, DuckDuckGo fallback)
-  fetch_url     — fetch clean markdown from a URL via crawl4ai
-  get_time      — current time in any IANA timezone
-  currency_convert — live exchange rates via frankfurter.dev
-  read_file     — read a UTF-8 text file from the sandbox
-  list_dir      — list files and directories in the sandbox
-  create_file   — create a new sandbox file
-  update_file   — overwrite an existing sandbox file
-  edit_file     — find-and-replace inside a sandbox file
-
-Requires .env with TAVILY_API_KEY (optional) and must have ddgs + crawl4ai installed:
-    uv add ddgs tavily-python crawl4ai
-
-Run modes:
-    uv run mcp_server/server.py              # stdio (used by agent.py)
-    uv run mcp_server/server.py --http 8200  # HTTP+SSE for standalone testing
 """
+MCP server for EAGV3 Session 6.
+
+Nine tools, stdio transport:
+    web_search, fetch_url, get_time, currency_convert,
+    read_file, list_dir, create_file, update_file, edit_file
+
+web_search:  Tavily primary, DuckDuckGo fallback. Hard-capped at 5 results.
+fetch_url:   crawl4ai only — clean markdown via headless Chromium.
+Usage for tavily and duckduckgo is logged to ./usage.json with monthly
+rollover and a soft cap of 950/1000 on Tavily.
+
+File tools are sandboxed under ./sandbox/. Run:  python mcp_server.py
+"""
+
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import threading
@@ -30,40 +23,38 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
+from ddgs import DDGS
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+MAX_SEARCH_RESULTS = 5  # hard cap — Tavily prices per result
 
-SANDBOX = Path(__file__).parent.parent / "sandbox"
+load_dotenv(Path(__file__).parent / ".env")
+
+mcp = FastMCP("eagv3-s6-server")
+
+SANDBOX = Path(__file__).parent / "sandbox"
 SANDBOX.mkdir(exist_ok=True)
 
-USAGE_PATH = Path(__file__).parent.parent / "state" / "search_usage.json"
-MONTHLY_CAP = 950
-MAX_SEARCH_RESULTS = 5
+USAGE_PATH = Path(__file__).parent / "usage.json"
+MONTHLY_CAP = 950  # leave 50/mo headroom on Tavily
 _usage_lock = threading.Lock()
 
-mcp = FastMCP("scaffold-mcp-server")
-
-
-# ---------------------------------------------------------------------------
-# Sandbox path guard
-# ---------------------------------------------------------------------------
 
 def _safe(path: str) -> Path:
-    resolved = (SANDBOX / path).resolve()
+    p = (SANDBOX / path).resolve()
     base = SANDBOX.resolve()
-    if resolved != base and base not in resolved.parents:
+    if p != base and base not in p.parents:
         raise ValueError(f"Path '{path}' escapes the sandbox")
-    return resolved
+    return p
 
-
-# ---------------------------------------------------------------------------
-# Search usage tracking (Tavily has a monthly quota)
-# ---------------------------------------------------------------------------
 
 def _empty_usage(month: str) -> dict:
-    return {"month": month, "tavily": {"count": 0, "errors": 0}, "duckduckgo": {"count": 0, "errors": 0}}
+    return {
+        "month": month,
+        "tavily": {"count": 0, "errors": 0},
+        "duckduckgo": {"count": 0, "errors": 0},
+    }
 
 
 def _load_usage() -> dict:
@@ -74,49 +65,142 @@ def _load_usage() -> dict:
         data = json.loads(USAGE_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return _empty_usage(month)
-    return data if data.get("month") == month else _empty_usage(month)
+    if data.get("month") != month:
+        return _empty_usage(month)
+    for k in ("tavily", "duckduckgo"):
+        data.setdefault(k, {"count": 0, "errors": 0})
+    return data
+
+
+def _save_usage(data: dict) -> None:
+    USAGE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _bump(provider: str, field: str = "count") -> None:
     with _usage_lock:
         data = _load_usage()
         data[provider][field] = data[provider].get(field, 0) + 1
-        USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        USAGE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _save_usage(data)
 
 
 def _under_cap(provider: str) -> bool:
     return _load_usage()[provider]["count"] < MONTHLY_CAP
 
 
-# ---------------------------------------------------------------------------
-# Core tools — always available
-# ---------------------------------------------------------------------------
+def _tavily_search(query: str, max_results: int) -> list[dict]:
+    from tavily import TavilyClient
+
+    client = TavilyClient(os.environ["TAVILY_API_KEY"])
+    resp = client.search(query=query, max_results=max_results, search_depth="advanced")
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "snippet": r.get("content", ""),
+        }
+        for r in resp.get("results", [])
+    ]
+
+
+def _ddg_search(query: str, max_results: int) -> list[dict]:
+    hits: list[dict] = []
+    with DDGS() as ddgs:
+        for backend in ("auto", "html", "lite"):
+            try:
+                hits = list(ddgs.text(query, max_results=max_results, backend=backend))
+            except Exception:
+                hits = []
+            if hits:
+                break
+    return [
+        {
+            "title": h.get("title", ""),
+            "url": h.get("href", ""),
+            "snippet": h.get("body", ""),
+        }
+        for h in hits
+    ]
+
+
+async def _crawl4ai_fetch(url: str) -> dict:
+    from crawl4ai import AsyncWebCrawler
+
+    # crawl4ai uses Rich which writes via its own captured stdout reference, so
+    # contextlib.redirect_stdout doesn't catch it. Redirect at the file-descriptor
+    # level — crawl4ai's banner / [FETCH] / [SCRAPE] markers would otherwise
+    # corrupt the MCP stdio JSON-RPC stream.
+    saved_fd = os.dup(1)
+    os.dup2(2, 1)
+    try:
+        async with AsyncWebCrawler(verbose=False) as crawler:
+            r = await crawler.arun(url=url)
+    finally:
+        os.dup2(saved_fd, 1)
+        os.close(saved_fd)
+    # r.markdown is a str subclass (StringCompatibleMarkdown) that Pydantic
+    # serializes as {} because its real field is private. Pull the raw string
+    # out and force a plain str so FastMCP serializes correctly.
+    md = r.markdown
+    raw = (
+        getattr(md, "raw_markdown", None)
+        or getattr(md, "fit_markdown", None)
+        or md
+        or r.cleaned_html
+        or r.html
+        or ""
+    )
+    text = str(raw)
+    return {
+        "status": int(getattr(r, "status_code", None) or 200),
+        "content_type": "text/markdown",
+        "length_bytes": len(text.encode("utf-8")),
+        "text": text,
+    }
+
 
 @mcp.tool()
-def ping() -> dict:
-    """Health-check. Returns server status. Example: ping()."""
-    return {"status": "ok", "server": "scaffold-mcp-server"}
+def web_search(query: str, max_results: int = 5) -> list[dict]:
+    """Search the web (Tavily primary, DDG fallback). Hard-capped at 5 results. Example: web_search("python asyncio tutorial", 3)."""
+    max_results = max(1, min(max_results, MAX_SEARCH_RESULTS))
+    if os.environ.get("TAVILY_API_KEY") and _under_cap("tavily"):
+        try:
+            results = _tavily_search(query, max_results)
+            if results:
+                _bump("tavily")
+                return results
+        except Exception:
+            _bump("tavily", "errors")
+    results = _ddg_search(query, max_results)
+    _bump("duckduckgo")
+    return results
+
+
+@mcp.tool()
+async def fetch_url(url: str, timeout: int = 20) -> dict:
+    """Fetch clean markdown from a URL via crawl4ai (headless Chromium). Example: fetch_url("https://example.com")."""
+    return await _crawl4ai_fetch(url)
 
 
 @mcp.tool()
 def get_time(timezone: str = "UTC") -> dict:
-    """Current time in a named IANA timezone. Example: get_time("Asia/Tokyo")."""
+    """Current time in a named IANA timezone. Example: get_time("Asia/Kolkata")."""
     tz = ZoneInfo(timezone)
     now = datetime.now(tz)
     offset = now.utcoffset()
+    offset_hours = offset.total_seconds() / 3600 if offset else 0.0
     return {
         "iso": now.isoformat(),
         "human": now.strftime("%A, %d %B %Y %H:%M:%S %Z"),
         "timezone": timezone,
-        "offset_hours": offset.total_seconds() / 3600 if offset else 0.0,
+        "offset_hours": offset_hours,
     }
 
 
 @mcp.tool()
 def currency_convert(amount: float, from_currency: str, to_currency: str) -> dict:
-    """Convert money between ISO-3 currencies via frankfurter.dev. Example: currency_convert(100, "USD", "JPY")."""
-    f, t = from_currency.upper(), to_currency.upper()
+    """Convert money between ISO-3 currencies via frankfurter.dev. Example: currency_convert(100, "USD", "INR")."""
+    f = from_currency.upper()
+    t = to_currency.upper()
     url = f"https://api.frankfurter.dev/v1/latest?amount={amount}&base={f}&symbols={t}"
     with httpx.Client(timeout=20, follow_redirects=True) as client:
         r = client.get(url)
@@ -124,8 +208,10 @@ def currency_convert(amount: float, from_currency: str, to_currency: str) -> dic
         data = r.json()
     converted = data["rates"][t]
     return {
-        "amount": amount, "from": f, "to": t,
-        "rate": round(converted / amount, 6) if amount else 0.0,
+        "amount": amount,
+        "from": f,
+        "to": t,
+        "rate": converted / amount if amount else 0.0,
         "converted": converted,
         "date": data["date"],
         "source": "frankfurter.dev",
@@ -136,31 +222,36 @@ def currency_convert(amount: float, from_currency: str, to_currency: str) -> dic
 def read_file(path: str) -> dict:
     """Read a UTF-8 text file from the sandbox. Example: read_file("notes.txt")."""
     p = _safe(path)
-    if not p.exists():
-        raise FileNotFoundError(f"File '{path}' does not exist in sandbox")
     text = p.read_text(encoding="utf-8")
-    return {"path": path, "size_bytes": p.stat().st_size, "content": text}
+    return {
+        "path": path,
+        "size_bytes": p.stat().st_size,
+        "content": text,
+        "encoding": "utf-8",
+    }
 
 
 @mcp.tool()
 def list_dir(path: str = ".") -> list[dict]:
-    """List files and directories in the sandbox. Example: list_dir(".")."""
+    """List a directory inside the sandbox. Example: list_dir(".")."""
     p = _safe(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Directory '{path}' does not exist in sandbox")
-    return [
-        {"name": c.name, "type": "dir" if c.is_dir() else "file",
-         "size_bytes": 0 if c.is_dir() else c.stat().st_size}
-        for c in sorted(p.iterdir())
-    ]
+    out = []
+    for child in sorted(p.iterdir()):
+        is_dir = child.is_dir()
+        out.append({
+            "name": child.name,
+            "type": "dir" if is_dir else "file",
+            "size_bytes": 0 if is_dir else child.stat().st_size,
+        })
+    return out
 
 
 @mcp.tool()
 def create_file(path: str, content: str) -> dict:
-    """Create a new file in the sandbox; errors if it already exists. Example: create_file("out.txt", "hello")."""
+    """Create a new file in the sandbox; errors if it exists. Parent directories are created automatically. Example: create_file("reminders/note.txt", "hi")."""
     p = _safe(path)
     if p.exists():
-        raise ValueError(f"File '{path}' already exists — use update_file to overwrite")
+        raise ValueError(f"File '{path}' already exists")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return {"ok": True, "path": path, "size_bytes": p.stat().st_size}
@@ -168,104 +259,44 @@ def create_file(path: str, content: str) -> dict:
 
 @mcp.tool()
 def update_file(path: str, content: str) -> dict:
-    """Overwrite an existing sandbox file. Example: update_file("out.txt", "new content")."""
+    """Overwrite an existing sandbox file. Example: update_file("hello.txt", "new body")."""
     p = _safe(path)
     if not p.exists():
-        raise FileNotFoundError(f"File '{path}' does not exist — use create_file first")
+        raise ValueError(f"File '{path}' does not exist")
     p.write_text(content, encoding="utf-8")
     return {"ok": True, "path": path, "size_bytes": p.stat().st_size}
 
 
 @mcp.tool()
 def edit_file(path: str, find: str, replace: str, replace_all: bool = False) -> dict:
-    """Find-and-replace inside a sandbox file. Example: edit_file("out.txt", "foo", "bar")."""
+    """Find-and-replace inside a sandbox file. Example: edit_file("hello.txt", "foo", "bar")."""
     p = _safe(path)
     text = p.read_text(encoding="utf-8")
     count = text.count(find)
     if count == 0:
         raise ValueError(f"'{find}' not found in '{path}'")
     if count > 1 and not replace_all:
-        raise ValueError(f"'{find}' appears {count} times — pass replace_all=True to replace all")
+        raise ValueError(
+            f"'{find}' occurs {count} times in '{path}'; pass replace_all=True"
+        )
     new_text = text.replace(find, replace) if replace_all else text.replace(find, replace, 1)
     p.write_text(new_text, encoding="utf-8")
-    return {"ok": True, "path": path, "replacements": count if replace_all else 1}
+    replacements = count if replace_all else 1
+    return {
+        "ok": True,
+        "path": path,
+        "replacements": replacements,
+        "size_bytes": p.stat().st_size,
+    }
 
-
-# ---------------------------------------------------------------------------
-# Optional tools — require: uv add --optional mcp-tools
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-def web_search(query: str, max_results: int = 5) -> list[dict]:
-    """Search the web (Tavily primary, DuckDuckGo fallback). Requires mcp-tools optional deps. Example: web_search("python asyncio best practices", 3)."""
-    max_results = max(1, min(max_results, MAX_SEARCH_RESULTS))
-
-    if os.environ.get("TAVILY_API_KEY") and _under_cap("tavily"):
-        try:
-            from tavily import TavilyClient
-            client = TavilyClient(os.environ["TAVILY_API_KEY"])
-            resp = client.search(query=query, max_results=max_results, search_depth="advanced")
-            results = [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")} for r in resp.get("results", [])]
-            if results:
-                _bump("tavily")
-                return results
-        except ImportError:
-            pass
-        except Exception:
-            _bump("tavily", "errors")
-
-    try:
-        from ddgs import DDGS
-        hits: list[dict] = []
-        with DDGS() as ddgs:
-            for backend in ("auto", "html", "lite"):
-                try:
-                    hits = list(ddgs.text(query, max_results=max_results, backend=backend))
-                except Exception:
-                    hits = []
-                if hits:
-                    break
-        _bump("duckduckgo")
-        return [{"title": h.get("title", ""), "url": h.get("href", ""), "snippet": h.get("body", "")} for h in hits]
-    except ImportError:
-        raise RuntimeError("web_search requires ddgs: run 'uv add --optional mcp-tools'")
-
-
-@mcp.tool()
-async def fetch_url(url: str) -> dict:
-    """Fetch clean markdown from a URL via crawl4ai. Requires mcp-tools optional deps. Example: fetch_url("https://example.com")."""
-    try:
-        from crawl4ai import AsyncWebCrawler
-    except ImportError:
-        raise RuntimeError("fetch_url requires crawl4ai: run 'uv add --optional mcp-tools'")
-
-    saved_fd = os.dup(1)
-    os.dup2(2, 1)
-    try:
-        async with AsyncWebCrawler(verbose=False) as crawler:
-            r = await crawler.arun(url=url)
-    finally:
-        os.dup2(saved_fd, 1)
-        os.close(saved_fd)
-
-    md = r.markdown
-    raw = getattr(md, "raw_markdown", None) or getattr(md, "fit_markdown", None) or md or r.cleaned_html or ""
-    text = str(raw)
-    return {"status": int(getattr(r, "status_code", None) or 200), "content_type": "text/markdown", "length_bytes": len(text.encode()), "text": text}
-
-
-# ---------------------------------------------------------------------------
-# Add your domain-specific tools here
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Scaffold MCP server")
-    parser.add_argument("--http", type=int, metavar="PORT", help="Serve over HTTP+SSE instead of stdio")
+    import argparse
+    import uvicorn
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--http", type=int, metavar="PORT", help="Run as SSE server on PORT instead of stdio")
     args = parser.parse_args()
-    mcp.run(transport="sse" if args.http else "stdio",
-            **{"host": "127.0.0.1", "port": args.http} if args.http else {})
+    if args.http:
+        uvicorn.run(mcp.sse_app(), host="127.0.0.1", port=args.http, log_level="info")
+    else:
+        mcp.run(transport="stdio")

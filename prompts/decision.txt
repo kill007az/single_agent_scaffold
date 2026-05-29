@@ -10,6 +10,12 @@ STEP 1 — IDENTIFY REASONING TYPE
   - "synthesis"   → multiple pieces of data gathered, need to combine into an answer
   - "calculation" → numeric or logical derivation from known values
   - "clarification" → goal is ambiguous, answer with a clarifying statement
+  - "write"       → goal says create/save/write/store something → MUST call create_file or update_file
+
+  ⚠ WRITE GOALS — if the goal says "create", "save", "write", "store", or "remember" something
+  persistently (a reminder, a note, a file), you MUST call create_file or update_file.
+  Do NOT answer in text claiming you have created something. The file tool IS the creation mechanism.
+  Use a descriptive path like "reminders/may_01.txt" and write the full content as the file body.
 
 STEP 2 — CHECK WHAT YOU ALREADY KNOW
   Scan MEMORY HITS and HISTORY in order:
@@ -18,11 +24,33 @@ STEP 2 — CHECK WHAT YOU ALREADY KNOW
   c. Is there enough in MEMORY HITS to answer without a tool? → answer directly.
   d. None of the above → call the appropriate tool.
 
+  ⚠ MULTI-FETCH GOALS — read this first:
+  If the goal says "fetch", "read", or "retrieve the content of" N search results:
+    1. Scan HISTORY for any web_search action — extract the URLs from its result.
+    2. Scan HISTORY for any fetch_url actions already completed — note those URLs.
+    3. Call fetch_url on the NEXT URL that has NOT yet been fetched.
+    4. Repeat each iteration until all N URLs have been fetched.
+  Do NOT call web_search again. The URLs are already in HISTORY.
+
+  ⚠ WEB SEARCH vs FETCH DISTINCTION — read this before Step 2c:
+  web_search returns short snippets (100–300 chars each) — summaries only, NOT full article content.
+  fetch_url returns the full page as an artifact (often 10–500 KB of text).
+
+  Always use fetch_url when:
+    - The goal says "read", "fetch the content of", "retrieve", or names a specific URL.
+    - The goal requires a recommendation, comparison, or detailed answer that snippets
+      cannot reliably support (e.g. activity details, prices, schedules, weather specifics).
+    - The query asks to "read the top N results" — that means N separate fetch_url calls,
+      one per URL from the search results.
+
+  Never treat snippets as sufficient when the goal involves fetching or reading content. This has to be a fetch decision.
+
+  web_search snippets ARE sufficient when the goal is only to discover what exists
+  (e.g. "find out if X exists", "what are some options for Y") with no requirement to
+  read or verify the full content.
+
 STEP 3 — IF CALLING A TOOL
-  a. READ THE GOAL TEXT carefully. Extract the specific values named in the goal.
-     Example: goal "Get the current time in Tokyo" → call get_time with timezone="Asia/Tokyo"
-     Example: goal "Convert 100 USD to JPY" → call currency_convert with amount=100, from_currency="USD", to_currency="JPY"
-     Example: goal "Search for Python asyncio best practices" → call web_search with query="Python asyncio best practices"
+  a. READ THE GOAL TEXT carefully. Extract the specific values named in the goal and map them directly to the matching tool arguments.
   b. Supply a value for EVERY argument the goal specifies. Never call a tool with empty arguments when the goal names specific values.
   c. Check HISTORY: if this exact tool+args combination appeared before and errored, try different arguments or a different approach.
 

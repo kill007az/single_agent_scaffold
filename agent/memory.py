@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -129,7 +129,7 @@ class MemoryService:
             source=source,
             run_id=run_id,
             goal_id=goal_id,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         self._items.append(item)
         self._save()
@@ -159,7 +159,7 @@ class MemoryService:
             source="action",
             run_id=run_id,
             goal_id=goal_id,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         self._items.append(item)
         self._save()

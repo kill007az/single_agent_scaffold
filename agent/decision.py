@@ -39,15 +39,35 @@ def next_step(
                 text = blob.decode("utf-8", errors="replace")
             except Exception:
                 text = f"<binary {len(blob)} bytes>"
-            parts.append(f"--- {art_id} ({len(blob)} bytes) ---\n{text[:8000]}")
+            parts.append(f"--- {art_id} ({len(blob)} bytes) ---\n{text[:32000]}")
         attached_section = "\n\nATTACHED ARTIFACTS:\n" + "\n\n".join(parts)
+
+    _fetch_keywords = {"fetch", "retrieve", "read the content", "read the top", "read the full"}
+    _is_fetch_goal = any(kw in goal.text.lower() for kw in _fetch_keywords)
+
+    if attached and _is_fetch_goal:
+        closing = (
+            "ATTACHED ARTIFACTS contain search result snippets — NOT full page content. "
+            "You MUST call fetch_url on the next URL from the search results that has not yet been fetched. "
+            "Do NOT answer directly."
+        )
+    elif attached:
+        closing = (
+            "ATTACHED ARTIFACTS contain the fetched content. "
+            "Extract the answer directly from it. Do NOT call any tool — answer now."
+        )
+    else:
+        closing = (
+            "Either call a tool to progress toward the goal, or answer directly if you "
+            "already have enough information."
+        )
 
     prompt = (
         f"CURRENT GOAL:\n{goal.text}\n\n"
         f"MEMORY HITS:\n{hits_text}\n\n"
         f"RECENT HISTORY:\n{history_text}"
         f"{attached_section}\n\n"
-        "Either call a tool to progress toward the goal, or answer directly if you already have enough information."
+        f"{closing}"
     )
 
     gateway_tools = [

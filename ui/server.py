@@ -14,10 +14,15 @@ import ast
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 import time
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -309,5 +314,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Single-Agent Scaffold UI")
     parser.add_argument("--port", type=int, default=7100)
     args = parser.parse_args()
+    mcp_url = os.environ.get("MCP_SERVER_URL")
     log.info(f"Single-Agent Scaffold UI  ->  http://127.0.0.1:{args.port}")
+    log.info(f"MCP transport: {'SSE  ' + mcp_url if mcp_url else 'stdio (subprocess)'}")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
