@@ -14,6 +14,7 @@ wheels/
 
 # Agent runtime state (memory + artifact blobs)
 state/*
+mcp_server/sandbox/*
 
 # uv lock (keep pyproject.toml, optionally commit uv.lock)
 # uv.lock  ← uncomment to exclude

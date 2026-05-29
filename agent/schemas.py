@@ -1,10 +1,69 @@
 """Pydantic contracts for all role boundaries in the agent scaffold."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+# ── MCP tool return types ─────────────────────────────────────────────────────
+
+class SearchResultItem(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class FetchResult(BaseModel):
+    status: int
+    content_type: str
+    length_bytes: int
+    text: str
+
+
+class TimeResult(BaseModel):
+    iso: str
+    human: str
+    timezone: str
+    offset_hours: float
+
+
+class CurrencyResult(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    amount: float
+    from_currency: str = Field(alias="from")
+    to_currency: str = Field(alias="to")
+    rate: float
+    converted: float
+    date: str
+    source: str
+
+
+class ReadFileResult(BaseModel):
+    path: str
+    size_bytes: int
+    content: str
+    encoding: str
+
+
+class DirEntry(BaseModel):
+    name: str
+    type: str
+    size_bytes: int
+
+
+class FileWriteResult(BaseModel):
+    ok: bool
+    path: str
+    size_bytes: int
+
+
+class EditFileResult(BaseModel):
+    ok: bool
+    path: str
+    replacements: int
+    size_bytes: int
 
 
 class MemoryItem(BaseModel):
@@ -18,7 +77,7 @@ class MemoryItem(BaseModel):
     run_id: str
     goal_id: str | None = None
     confidence: float = 1.0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Artifact(BaseModel):
@@ -55,6 +114,14 @@ class ToolCall(BaseModel):
 class DecisionOutput(BaseModel):
     answer: str | None = None
     tool_call: ToolCall | None = None
+
+    @model_validator(mode="after")
+    def _one_of(self) -> "DecisionOutput":
+        if self.answer is None and self.tool_call is None:
+            raise ValueError("DecisionOutput must have either 'answer' or 'tool_call'")
+        if self.answer is not None and self.tool_call is not None:
+            raise ValueError("DecisionOutput must not have both 'answer' and 'tool_call'")
+        return self
 
     @property
     def is_answer(self) -> bool:
